@@ -1,3 +1,4 @@
+import hmac
 import os
 from flask import Flask, request, jsonify
 
@@ -8,12 +9,14 @@ app = Flask(__name__)
 def auth():
     credential = os.environ.get('KEYRING_CREDENTIAL', '')
     parts = credential.split(':', 1)
-    if len(parts) != 2 or not parts[0]:
+    if len(parts) != 2 or not parts[0] or not parts[1]:
         return jsonify({'error': 'Server misconfigured'}), 500
 
     stored_id, stored_pw = parts
     data = request.get_json(silent=True) or {}
-    if data.get('id') == stored_id and data.get('password') == stored_pw:
+    id_match = hmac.compare_digest(str(data.get('id', '')), stored_id)
+    pw_match = hmac.compare_digest(str(data.get('password', '')), stored_pw)
+    if id_match and pw_match:
         return jsonify({'ok': True}), 200
     return jsonify({'error': 'Invalid credentials'}), 401
 
