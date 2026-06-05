@@ -16,6 +16,7 @@ A client-side TOTP vault with AES-GCM encrypted localStorage, RFC 6238 OTP codes
 - **Demo mode** — `?demo=1` loads sample accounts without touching the real vault
 - **Drag reorder** — HTML5 drag-and-drop to reorder accounts
 - **Tweaks panel** — live accent color, density, layout, and theme switching
+- **Mobile-ready** — responsive layout adapts to phone screens; installable as a PWA via `manifest.json`
 
 ## Stack
 
