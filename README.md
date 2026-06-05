@@ -4,6 +4,10 @@ A client-side TOTP vault with AES-GCM encrypted localStorage, RFC 6238 OTP codes
 
 **Live:** [uiseoya.com/credential?service=otp](https://uiseoya.com/credential?service=otp)
 
+| Login | Vault |
+|-------|-------|
+| ![Login screen](docs/screenshots/login.png) | ![Vault](docs/screenshots/vault.png) |
+
 ## Features
 
 - **RFC 6238 TOTP** — real `crypto.subtle` HMAC-SHA-1 for base32 secrets; deterministic hash fallback for demo seeds
