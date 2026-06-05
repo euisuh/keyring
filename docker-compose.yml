@@ -1,0 +1,31 @@
+services:
+  keyring-nginx:
+    build: .
+    image: keyring:latest
+    container_name: keyring
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8088:80"
+    depends_on:
+      - keyring-auth
+    networks:
+      - default
+      - npm
+
+  keyring-auth:
+    build: ./auth
+    image: keyring-auth:latest
+    container_name: keyring-auth
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      KEYRING_CREDENTIAL: ${KEYRING_CREDENTIAL:-you@email.com:changeme}
+    networks:
+      - default
+
+networks:
+  npm:
+    external: true
+    name: nginx-proxy-manager_default
