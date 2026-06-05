@@ -4,4 +4,5 @@ __pycache__/
 *.pyo
 auth/data/
 data/
+app/
 .DS_Store
