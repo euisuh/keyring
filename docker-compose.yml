@@ -7,7 +7,8 @@ services:
     ports:
       - "127.0.0.1:8088:80"
     depends_on:
-      - keyring-auth
+      keyring-auth:
+        condition: service_healthy
     networks:
       - default
       - npm
@@ -21,7 +22,13 @@ services:
       - path: .env
         required: false
     environment:
-      KEYRING_CREDENTIAL: ${KEYRING_CREDENTIAL:-you@email.com:changeme}
+      KEYRING_CREDENTIAL: ${KEYRING_CREDENTIAL:?KEYRING_CREDENTIAL must be set in .env}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8080/keyring/api/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
     networks:
       - default
 

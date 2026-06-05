@@ -257,15 +257,15 @@ function Toast({ toast }) {
 // period: TOTP window in seconds (30 or 60). Different values = codes change
 // at different times so the demo looks like a real running authenticator.
 const SEED_ACCOUNTS = [
-  { id: 'a1', issuer: 'GitHub',      account: 'euisuh',               seed: 'gh-7741-ej',  tone: 'slate',  fav: true,  period: 30 },
-  { id: 'a2', issuer: 'Google',      account: 'euisuh@gmail.com',     seed: 'go-2210-ej',  tone: 'blue',   fav: true,  period: 30 },
+  { id: 'a1', issuer: 'GitHub',      account: 'alice',                seed: 'gh-7741-ej',  tone: 'slate',  fav: true,  period: 30 },
+  { id: 'a2', issuer: 'Google',      account: 'alice@example.com',    seed: 'go-2210-ej',  tone: 'blue',   fav: true,  period: 30 },
   { id: 'a3', issuer: 'AWS',         account: 'root · us-east-1',     seed: 'aws-9920-ej', tone: 'amber',  fav: false, period: 30 },
-  { id: 'a4', issuer: 'Cloudflare',  account: 'euisuh@cloudflare',    seed: 'cf-5512-ej',  tone: 'amber',  fav: false, period: 60 },
-  { id: 'a5', issuer: 'Notion',      account: 'euisuh@notion',        seed: 'no-6634-ej',  tone: 'slate',  fav: false, period: 60 },
-  { id: 'a6', issuer: 'Vercel',      account: 'euisuh.jeong',         seed: 'vc-1180-ej',  tone: 'slate',  fav: false, period: 30 },
-  { id: 'a7', issuer: 'Anthropic',   account: 'euisuh@anthropic.com', seed: 'an-8821-ej',  tone: 'rose',   fav: true,  period: 30 },
-  { id: 'a8', issuer: 'Discord',     account: 'euisuh#0001',          seed: 'dc-3098-ej',  tone: 'violet', fav: false, period: 30 },
-  { id: 'a9', issuer: 'Hugging Face','account': 'euisuh',             seed: 'hf-4417-ej',  tone: 'amber',  fav: false, period: 60 },
+  { id: 'a4', issuer: 'Cloudflare',  account: 'alice@example.com',    seed: 'cf-5512-ej',  tone: 'amber',  fav: false, period: 60 },
+  { id: 'a5', issuer: 'Notion',      account: 'alice@example.com',    seed: 'no-6634-ej',  tone: 'slate',  fav: false, period: 60 },
+  { id: 'a6', issuer: 'Vercel',      account: 'alice.dev',            seed: 'vc-1180-ej',  tone: 'slate',  fav: false, period: 30 },
+  { id: 'a7', issuer: 'Anthropic',   account: 'alice@example.com',    seed: 'an-8821-ej',  tone: 'rose',   fav: true,  period: 30 },
+  { id: 'a8', issuer: 'Discord',     account: 'alice#0001',           seed: 'dc-3098-ej',  tone: 'violet', fav: false, period: 30 },
+  { id: 'a9', issuer: 'Hugging Face','account': 'alice',              seed: 'hf-4417-ej',  tone: 'amber',  fav: false, period: 60 },
 ];
 
 const SEED_BACKUP = [
