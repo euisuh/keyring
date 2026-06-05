@@ -1,0 +1,9 @@
+{
+  "name": "Keyring",
+  "short_name": "Keyring",
+  "start_url": "/keyring/",
+  "display": "standalone",
+  "background_color": "#08090d",
+  "theme_color": "#7dd3fc",
+  "icons": []
+}
