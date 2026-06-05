@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Keyring — OTP · Euisuh</title>
+<link rel="manifest" href="/keyring-manifest.json" />
+<meta name="theme-color" content="#7dd3fc" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Keyring" />
+<script>
+  (function () {
+    try {
+      var th = localStorage.getItem('ej_theme');
+      if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --accent: #7dd3fc;
+    --accent-soft: color-mix(in oklab, var(--accent) 14%, transparent);
+    --warn: #ff6a6a;
+    --ok: #1f9d63;
+    --row-pad: 14px;
+    --list-gap: 8px;
+    --radius: 8px;
+    --font-ui: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, monospace;
+  }
+  html[data-theme="light"]{
+    --bg: #f3f6f9;
+    --bg-2: #e7ecf2;
+    --surface: color-mix(in oklab, #ffffff 82%, transparent);
+    --surface-2: color-mix(in oklab, #f7fafc 76%, transparent);
+    --text: #111b24;
+    --text-2: #596977;
+    --text-3: #8896a5;
+    --border: rgba(14,60,100,0.14);
+    --border-2: rgba(14,60,100,0.09);
+    --grid-line: rgba(14,60,100,0.09);
+    --grid-line-strong: rgba(14,60,100,0.20);
+    --hover: rgba(14,60,100,0.055);
+    --press: rgba(14,60,100,0.09);
+    --shadow: 0 1px 0 rgba(255,255,255,.45) inset, 0 32px 90px -48px rgba(17,27,36,.48);
+    --code-bg: rgba(14,60,100,0.055);
+  }
+  html[data-theme="dark"]{
+    --bg: #08090d;
+    --bg-2: #0c0e14;
+    --surface: color-mix(in oklab, #0c1018 78%, transparent);
+    --surface-2: color-mix(in oklab, #111824 70%, transparent);
+    --text: #d4dde9;
+    --text-2: #6b7685;
+    --text-3: #475060;
+    --border: rgba(125,211,252,0.16);
+    --border-2: rgba(125,211,252,0.09);
+    --grid-line: rgba(125,211,252,0.10);
+    --grid-line-strong: rgba(125,211,252,0.22);
+    --hover: rgba(125,211,252,0.06);
+    --press: rgba(125,211,252,0.10);
+    --shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 34px 90px -46px rgba(0,0,0,.85);
+    --code-bg: rgba(125,211,252,0.07);
+  }
+  *{ box-sizing: border-box; }
+  html, body{ margin:0; height:100%; }
+  body{
+    font-family: var(--font-ui);
+    background: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    display:flex; align-items:center; justify-content:center;
+    min-height:100%;
+    padding: 24px;
+    transition: background .35s ease, color .25s ease;
+    overflow: hidden;
+  }
+  #root{ position: relative; z-index: 2; width:100%; display:flex; justify-content:center; }
+  ::selection{ background: var(--accent-soft); }
+
+  .grid-bg {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(var(--grid-line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+    background-size: 64px 64px;
+    mask-image: radial-gradient(ellipse at 50% 30%, rgba(0,0,0,1) 0%, rgba(0,0,0,0.5) 60%, rgba(0,0,0,0) 100%);
+  }
+  .scan {
+    position: fixed; inset: 0; z-index: 1; pointer-events: none; mix-blend-mode: overlay; opacity: 0.18;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 3px);
+  }
+
+  .app{
+    width: min(460px, 100vw); max-width: 100%;
+    height: min(840px, calc(100vh - 48px));
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    display:flex; flex-direction:column;
+    overflow:hidden;
+    position: relative;
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    backdrop-filter: blur(18px) saturate(150%);
+  }
+
+  button{ font-family: inherit; cursor:pointer; }
+  .mono{ font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .tnum{ font-variant-numeric: tabular-nums; }
+
+  .scroll{ overflow-y:auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+  .scroll::-webkit-scrollbar{ width:9px; }
+  .scroll::-webkit-scrollbar-thumb{ background: var(--border); border-radius:8px; border:3px solid transparent; background-clip: content-box; }
+  .scroll::-webkit-scrollbar-thumb:hover{ background: var(--text-3); border:3px solid transparent; background-clip: content-box; }
+
+  @keyframes pop { from { transform: scale(.96); opacity:0 } to { transform: scale(1); opacity:1 } }
+  @keyframes fadeUp { from { transform: translateY(8px); opacity:0 } to { transform: translateY(0); opacity:1 } }
+  @keyframes flip { 0%{ transform: translateY(-40%); opacity:0; filter: blur(2px) } 100%{ transform: translateY(0); opacity:1; filter: blur(0) } }
+
+  @media (max-width: 520px) {
+    body { padding: 0; align-items: flex-start; }
+    #root { align-items: flex-start; justify-content: flex-start; }
+    .app {
+      width: min(100vw, 390px) !important;
+      max-width: 100vw !important;
+      height: 100dvh !important;
+      border-radius: 0 !important;
+      border-left: none !important;
+      border-right: none !important;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scan" aria-hidden="true"></div>
+  <div id="root"></div>
+
+  <template id="__bundler_thumbnail">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+      <rect width="100" height="100" rx="22" fill="#4f63d2"/>
+      <circle cx="42" cy="50" r="14" fill="none" stroke="#fff" stroke-width="5"/>
+      <circle cx="42" cy="50" r="4.5" fill="#fff"/>
+      <path d="M52 60 L68 76" stroke="#fff" stroke-width="5" stroke-linecap="round"/>
+    </svg>
+  </template>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="/tweaks-panel.jsx"></script>
+  <script type="text/babel" src="/keyring-lib.jsx"></script>
+  <script type="text/babel" src="/keyring-screens.jsx"></script>
+  <script type="text/babel" src="/keyring-app.jsx"></script>
+</body>
+</html>
