@@ -46,7 +46,9 @@ function App() {
     window.addEventListener('resize', fn);
     return () => window.removeEventListener('resize', fn);
   }, []);
-  const masterKey = React.useRef(null);
+  const vaultParams = React.useRef(null); // { key, salt, iter } for sealing the stored vault
+  const baseKey = React.useRef(null);     // non-extractable PBKDF2 key, for encrypted imports
+  const saveSeq = React.useRef(0);
   const vaultLoaded = React.useRef(false);
   const importRef = React.useRef(null);
   const [user, setUser] = React.useState(KR_DEMO ? GUEST : null);
@@ -63,53 +65,53 @@ function App() {
 
   // ── encrypted vault persist ──
   React.useEffect(() => {
-    if (!vaultLoaded.current || KR_DEMO || !masterKey.current) return;
-    encryptVault({ accounts, backups }, masterKey.current)
-      .then((b64) => localStorage.setItem('kr_vault', b64))
+    if (!vaultLoaded.current || KR_DEMO || !vaultParams.current) return;
+    // Encryption is async; only the newest save may write, so an older state
+    // finishing late cannot overwrite a newer one.
+    const seq = ++saveSeq.current;
+    sealVault({ accounts, backups }, vaultParams.current)
+      .then((env) => { if (seq === saveSeq.current) localStorage.setItem('kr_vault', JSON.stringify(env)); })
       .catch(() => showToast('Failed to save vault'));
   }, [accounts, backups]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── login / auth ──
   const handleLogin = async (email, pw) => {
-    let saltB64 = localStorage.getItem('kr_salt');
-    let salt;
-    if (saltB64) {
-      salt = b64dec(saltB64);
-    } else {
-      salt = crypto.getRandomValues(new Uint8Array(16));
-      localStorage.setItem('kr_salt', b64enc(salt));
-    }
-    const key = await deriveKey(pw, salt);
-    const vaultB64 = localStorage.getItem('kr_vault');
-    let initAccounts = [], initBackups = [];
-    let legacyMigration = false;
-    if (vaultB64) {
-      let decrypted;
-      try { decrypted = await decryptVault(vaultB64, key); }
+    const base = await passwordKey(pw);
+    const stored = localStorage.getItem('kr_vault');
+    let data = { accounts: [], backups: [] };
+    let params = null;
+    let legacyPlain = false;
+    if (stored) {
+      let opened;
+      try { opened = await openVault(stored, base, localStorage.getItem('kr_salt')); }
       catch { throw new Error('Wrong password'); }
-      initAccounts = decrypted.accounts || [];
-      initBackups = decrypted.backups || [];
+      data = sanitizeVault(opened.data);
+      // Keep the vault's salt/key unless it is a legacy blob or below the current
+      // iteration count; those are re-sealed with a fresh salt at KDF_ITER.
+      if (!opened.legacy && opened.params.iter >= KDF_ITER) params = opened.params;
     } else {
       const legacy = load('kr_accounts', null);
       if (legacy) {
-        initAccounts = legacy;
-        initBackups = load('kr_backups', []);
-        legacyMigration = true;
+        data = sanitizeVault({ accounts: legacy, backups: load('kr_backups', []) });
+        legacyPlain = true;
       }
     }
+    if (!params) params = await newVaultKey(base);
     // persist vault BEFORE committing any state — if this throws, nothing is mutated
-    let b64;
-    try { b64 = await encryptVault({ accounts: initAccounts, backups: initBackups }, key); }
+    let env;
+    try { env = await sealVault(data, params); }
     catch { throw new Error('Failed to save vault. Please try again.'); }
-    localStorage.setItem('kr_vault', b64);
-    if (legacyMigration) {
+    localStorage.setItem('kr_vault', JSON.stringify(env));
+    localStorage.removeItem('kr_salt'); // v2 envelopes carry their own salt
+    if (legacyPlain) {
       localStorage.removeItem('kr_accounts');
       localStorage.removeItem('kr_backups');
     }
-    masterKey.current = key;
+    vaultParams.current = params;
+    baseKey.current = base;
     vaultLoaded.current = true;
-    setAccounts(initAccounts);
-    setBackups(initBackups);
+    setAccounts(data.accounts);
+    setBackups(data.backups);
     setUser({ name: email.split('@')[0] || 'You', email, guest: false });
   };
 
@@ -121,7 +123,8 @@ function App() {
   };
 
   const handleSignOut = () => {
-    masterKey.current = null;
+    vaultParams.current = null;
+    baseKey.current = null;
     vaultLoaded.current = false;
     location.replace('/credential?service=otp');
   };
@@ -140,33 +143,34 @@ function App() {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── export / import ──
-  const exportVault = () => {
-    const data = { version: 1, exportedAt: new Date().toISOString(), accounts, backups };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  // Exports are encrypted v2 envelopes under the vault password. Plaintext
+  // v1 exports from older versions can still be imported.
+  const exportVault = async () => {
+    let text;
+    try { text = await buildExport({ accounts, backups }, vaultParams.current); }
+    catch { showToast('Export failed'); return; }
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
     const a = document.createElement('a');
     a.href = url; a.download = `keyring-${new Date().toISOString().slice(0, 10)}.json`; a.click();
     URL.revokeObjectURL(url);
-    showToast('Vault exported');
+    showToast('Encrypted vault exported');
   };
   const handleImportFile = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
     const input = e.target; // capture before FileReader async callback
     const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const data = JSON.parse(ev.target.result);
-        if (!Array.isArray(data.accounts)) throw new Error();
-        const accs = data.accounts;
-        const bkps = Array.isArray(data.backups)
-          ? data.backups.map((b) => ({ ...b, used: Array.isArray(b.used) ? b.used : [] }))
-          : [];
-        if (window.confirm(`Import ${accs.length} accounts? This replaces your current vault.`)) {
-          setAccounts(accs);
-          setBackups(bkps);
-          showToast(`Imported ${accs.length} accounts`);
-        }
-      } catch { showToast('Invalid export file'); }
+    reader.onload = async (ev) => {
       input.value = '';
+      let imported;
+      try { imported = await readExport(ev.target.result, baseKey.current); }
+      catch { showToast('Invalid file or wrong password'); return; }
+      const { accounts: accs, backups: bkps, encrypted } = imported;
+      const note = encrypted ? '' : ' This file is unencrypted; delete it after importing.';
+      if (window.confirm(`Import ${accs.length} accounts? This replaces your current vault.${note}`)) {
+        setAccounts(accs);
+        setBackups(bkps);
+        showToast(`Imported ${accs.length} accounts`);
+      }
     };
     reader.readAsText(file);
   };

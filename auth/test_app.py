@@ -35,6 +35,14 @@ class AuthSmokeTest(unittest.TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.get_json(), {"error": "Invalid credentials"})
 
+    def test_auth_handles_non_ascii_input(self):
+        with patch.dict(os.environ, {"KEYRING_CREDENTIAL": "owner@example.com:pässwört"}):
+            wrong = self.client.post("/keyring/api/auth", json={"id": "owner@example.com", "password": "ü"})
+            right = self.client.post("/keyring/api/auth", json={"id": "owner@example.com", "password": "pässwört"})
+
+        self.assertEqual(wrong.status_code, 401)
+        self.assertEqual(right.status_code, 200)
+
     def test_auth_reports_missing_server_credential(self):
         with patch.dict(os.environ, {}, clear=True):
             response = self.client.post(
