@@ -13,9 +13,9 @@ database or cloud sync.
 ## Features
 
 - **RFC 6238 TOTP** — real `crypto.subtle` HMAC-SHA-1 for base32 secrets; deterministic hash fallback for demo seeds
-- **AES-GCM-256 vault** — PBKDF2-SHA-256 (210 000 iterations) → AES-GCM. 12-byte random IV prepended to ciphertext, stored as base64 in `localStorage`
+- **AES-GCM-256 vault** — PBKDF2-HMAC-SHA-256 (600 000 iterations, 16-byte random salt) → AES-GCM-256 with a fresh 12-byte random IV per save and the header bound as associated data. Stored as a versioned JSON envelope in `localStorage`; see [SECURITY.md](SECURITY.md)
 - **Backup codes** — per-service recovery code sets with tap-to-copy and used-state tracking
-- **Import and export** — JSON backup and restore for accounts and recovery codes
+- **Import and export** — encrypted JSON backup and restore; older plaintext exports still import
 - **Demo mode** — `?demo=1` loads sample accounts without touching the real vault
 - **Drag reorder** — HTML5 drag-and-drop to reorder accounts
 - **Tweaks panel** — live accent color, density, layout, and theme switching
@@ -112,8 +112,8 @@ Then visit `http://localhost:8080/credential?service=otp`. The auth POST will fa
 
 ## Tests
 
-The smoke tests cover the health endpoint, valid login, rejected login, and a
-missing server credential:
+The auth smoke tests cover the health endpoint, valid and rejected login,
+non-ASCII input, and a missing server credential:
 
 ```bash
 python3 -m venv .venv
@@ -121,20 +121,29 @@ python3 -m venv .venv
 cd auth && ../.venv/bin/python -m unittest -v
 ```
 
-GitHub Actions runs the same suite on pushes and pull requests.
+The vault crypto tests (Node 20+, no dependencies) cover v2 round-trip, legacy
+vault decryption, wrong password, IV uniqueness, tampering, KDF bounds, and
+export/import:
+
+```bash
+node --test test/*.test.js
+```
+
+GitHub Actions runs both suites on pushes and pull requests.
 
 ## Structure
 
 ```
 .github/
   workflows/
-    test.yml             # Flask auth smoke tests
+    test.yml             # Flask auth + vault crypto tests
 public/
   keyring/
     index.html          # Vault app shell — loads keyring-*.jsx via Babel
   credential/
     index.html          # Auth gate shell — loads credential-app.jsx
-  keyring-lib.jsx       # TOTP engine, AES-GCM vault crypto, shared icons + components
+  keyring-crypto.jsx    # Vault envelope: PBKDF2 + AES-GCM, import/export (plain JS, Node-testable)
+  keyring-lib.jsx       # TOTP engine, shared icons + components
   keyring-app.jsx       # Root vault app — auth routing, account list, vault persistence
   keyring-screens.jsx   # AccountRow, BackupCard, AddModal, AddBackupModal
   credential-app.jsx    # Auth gate — OTP service definition + login form
@@ -149,23 +158,29 @@ nginx.conf
 Dockerfile
 docker-compose.yml
 .env.example
+test/
+  vault-crypto.test.js  # node --test
 docs/
   architecture.md
+SECURITY.md
 ```
 
 ## Security model
 
-- OTP secrets are stored AES-GCM encrypted in `localStorage`. The vault key is derived from your password at login and kept only in a JS `useRef` — it is never persisted.
-- The PBKDF2 salt is random and stored separately in `localStorage`; each vault write uses a new random 12-byte AES-GCM IV.
+- OTP secrets are stored AES-GCM encrypted in `localStorage`. The vault key is derived from your password at login and kept only as a non-extractable `CryptoKey` in a JS `useRef` — it is never persisted.
+- The vault is a v2 envelope `{"v":2,"kdf":"PBKDF2-SHA256","iter":600000,"salt","iv","ct"}`. Each vault write uses a new random 12-byte IV; the header is authenticated as AES-GCM associated data. Vaults from earlier versions (210 000 iterations, salt in `kr_salt`) are read and re-encrypted as v2 on the next login.
+- Exports are encrypted with the same envelope. Plaintext exports from earlier versions can still be imported.
+- nginx sends a Content-Security-Policy and rate-limits `POST /keyring/api/auth` to 10 requests per minute (burst 5).
 - The credential page temporarily passes the entered password through `sessionStorage`; the vault app removes that handoff value when it reads it.
-- The Flask service reads its login credential from `KEYRING_CREDENTIAL`, compares both fields with `hmac.compare_digest`, and has no database.
+- The Flask service reads its login credential from `KEYRING_CREDENTIAL`, compares both fields as UTF-8 bytes with `hmac.compare_digest`, and has no database.
+- The vault password is the login password, so whoever holds the server's `.env` can decrypt a copied vault.
 - React, ReactDOM, and Babel CDN scripts include Subresource Integrity hashes.
 - nginx sends `X-Frame-Options: SAMEORIGIN`, `X-Content-Type-Options: nosniff`, and `Referrer-Policy: strict-origin-when-cross-origin` headers on all responses.
 - The credential gate is marked `noindex, nofollow` in its meta tags. `robots.txt` also disallows `/credential` and `/keyring/`.
 
 This is a small self-hosted project, not an independently audited password
 manager. Browser compromise or script injection can expose a vault while it is
-unlocked.
+unlocked. Threat model and reporting: [SECURITY.md](SECURITY.md).
 
 ## License
 
