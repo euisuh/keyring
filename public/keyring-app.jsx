@@ -102,7 +102,7 @@ function App() {
     try { env = await sealVault(data, params); }
     catch { throw new Error('Failed to save vault. Please try again.'); }
     localStorage.setItem('kr_vault', JSON.stringify(env));
-    localStorage.removeItem('kr_salt'); // v2 envelopes carry their own salt
+    // Keep kr_salt: stale tabs can still save legacy ciphertext.
     if (legacyPlain) {
       localStorage.removeItem('kr_accounts');
       localStorage.removeItem('kr_backups');

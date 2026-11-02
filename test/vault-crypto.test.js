@@ -1,6 +1,8 @@
 // node --test test/
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const { readFileSync } = require('node:fs');
+const { runInNewContext } = require('node:vm');
 const K = require('../public/keyring-crypto.jsx');
 
 const PW = 'correct-horse';
@@ -35,6 +37,40 @@ test('legacy vault from the previous format still decrypts', async () => {
   assert.deepEqual(opened.data, VAULT);
   assert.equal(opened.legacy, true);
   assert.equal(opened.params.iter, 210000);
+});
+
+test('migration keeps legacy salt for stale-tab writes', async () => {
+  const storage = new Map([['kr_vault', LEGACY_VAULT], ['kr_salt', LEGACY_SALT]]);
+  const localStorage = {
+    getItem: (key) => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, value),
+    removeItem: (key) => storage.delete(key),
+  };
+  const source = readFileSync(require.resolve('../public/keyring-app.jsx'), 'utf8');
+  const start = source.indexOf('const handleLogin = async');
+  const end = source.indexOf('const handleGuestLogin', start);
+  assert.ok(start >= 0 && end > start);
+  // Execute the app's login handler without JSX or a browser.
+  const login = runInNewContext(`${source.slice(start, end)}; handleLogin;`, {
+    ...K, localStorage,
+    vaultParams: { current: null }, baseKey: { current: null }, vaultLoaded: { current: false },
+    setAccounts() {}, setBackups() {}, setUser() {},
+  });
+  const stale = await K.openVault(LEGACY_VAULT, base, LEGACY_SALT);
+  await login('alice@example.com', PW);
+  assert.equal(JSON.parse(localStorage.getItem('kr_vault')).v, 2);
+
+  const updated = { ...VAULT, accounts: [...VAULT.accounts, { ...VAULT.accounts[0], id: 'a2', issuer: 'New' }] };
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = new Uint8Array(await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv }, stale.params.key, new TextEncoder().encode(JSON.stringify(updated))
+  ));
+  localStorage.setItem('kr_vault', K.b64enc(new Uint8Array([...iv, ...ct])));
+  const reopened = await K.openVault(localStorage.getItem('kr_vault'), base, localStorage.getItem('kr_salt'));
+  assert.deepEqual(reopened.data, updated);
+  await login('alice@example.com', PW);
+  assert.deepEqual((await K.openVault(localStorage.getItem('kr_vault'), base)).data, updated);
+  assert.equal(localStorage.getItem('kr_salt'), LEGACY_SALT);
 });
 
 test('wrong password is rejected for both formats', async () => {
@@ -94,4 +130,25 @@ test('sanitizeVault drops unusable entries and keeps used indexes aligned', () =
   assert.deepEqual(out.backups[0].codes, ['123', 'abc']);
   assert.deepEqual(out.backups[0].used, [1]);
   assert.equal(out.backups.length, 1);
+});
+
+test('imports default whitespace-only issuers', async () => {
+  const out = await K.readExport(JSON.stringify({
+    accounts: [{ seed: 'ABCDEFGH', issuer: ' \t\n ' }, { seed: 'ABCDEFGH', issuer: ' GitHub ' }],
+    backups: [{ issuer: ' \t\n ', codes: [] }, { issuer: ' GitHub ', codes: [] }],
+  }), base);
+  assert.deepEqual(out.accounts.map((a) => a.issuer), ['Unknown', 'GitHub']);
+  assert.deepEqual(out.backups.map((b) => b.issuer), ['Unknown', 'GitHub']);
+});
+
+test('imports default tones outside the allowlist', async () => {
+  const tones = ['constructor', '__proto__', 'toString', 'unknown', '', null,
+    'blue', 'green', 'violet', 'amber', 'rose', 'slate', 'teal', 'red'];
+  const out = await K.readExport(JSON.stringify({
+    accounts: tones.map((tone) => ({ seed: 'ABCDEFGH', tone })),
+    backups: tones.map((tone) => ({ codes: [], tone })),
+  }), base);
+  const expected = tones.map((tone, i) => i < 6 ? 'slate' : tone);
+  assert.deepEqual(out.accounts.map((a) => a.tone), expected);
+  assert.deepEqual(out.backups.map((b) => b.tone), expected);
 });

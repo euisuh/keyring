@@ -97,14 +97,15 @@ async function openVault(stored, baseKey, legacySaltB64) {
 function sanitizeVault(data) {
   if (!data || !Array.isArray(data.accounts)) throw new Error('Invalid vault data');
   const str = (v) => typeof v === 'string';
+  const tones = ['blue', 'green', 'violet', 'amber', 'rose', 'slate', 'teal', 'red'];
   const accounts = data.accounts
     .filter((a) => a && str(a.seed) && a.seed)
     .map((a, i) => ({
       id: str(a.id) ? a.id : `a${Date.now()}-${i}`,
-      issuer: str(a.issuer) && a.issuer ? a.issuer : 'Unknown',
+      issuer: (str(a.issuer) && a.issuer.trim()) || 'Unknown',
       account: str(a.account) && a.account ? a.account : '—',
       seed: a.seed,
-      tone: str(a.tone) ? a.tone : 'slate',
+      tone: tones.includes(a.tone) ? a.tone : 'slate',
       fav: a.fav === true,
       ...(Number.isInteger(a.period) && a.period > 0 && a.period <= 3600 ? { period: a.period } : {}),
     }));
@@ -114,7 +115,7 @@ function sanitizeVault(data) {
       const codes = b.codes.map((c) => String(c)); // keep indexes so `used` stays aligned
       return {
         id: str(b.id) ? b.id : `b${Date.now()}-${i}`,
-        issuer: str(b.issuer) && b.issuer ? b.issuer : 'Unknown', tone: str(b.tone) ? b.tone : 'slate', codes,
+        issuer: (str(b.issuer) && b.issuer.trim()) || 'Unknown', tone: tones.includes(b.tone) ? b.tone : 'slate', codes,
         used: (Array.isArray(b.used) ? b.used : []).filter((n) => Number.isInteger(n) && n >= 0 && n < codes.length),
       };
     });
