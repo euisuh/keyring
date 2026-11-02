@@ -44,50 +44,7 @@ function hashCode(seed, step) {
   return String(fnv1a(seed + '|' + step) % 1000000).padStart(6, '0');
 }
 
-/* ───────────────────────── Vault crypto ─────────────────────────
-   PBKDF2-SHA-256 (210k iterations) → AES-GCM-256.
-   12-byte IV prepended to ciphertext, stored as base64 in localStorage. */
-function b64enc(u8) {
-  let s = '';
-  for (let i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-  return btoa(s);
-}
-function b64dec(s) {
-  return Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
-}
-async function deriveKey(password, salt) {
-  const raw = await crypto.subtle.importKey(
-    'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']
-  );
-  return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt, iterations: 210000, hash: 'SHA-256' },
-    raw,
-    { name: 'AES-GCM', length: 256 },
-    false,
-    ['encrypt', 'decrypt']
-  );
-}
-async function encryptVault(data, key) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const ct = new Uint8Array(await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    new TextEncoder().encode(JSON.stringify(data))
-  ));
-  const out = new Uint8Array(12 + ct.length);
-  out.set(iv);
-  out.set(ct, 12);
-  return b64enc(out);
-}
-async function decryptVault(b64, key) {
-  const bytes = b64dec(b64);
-  const plain = await crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv: bytes.slice(0, 12) },
-    key,
-    bytes.slice(12)
-  );
-  return JSON.parse(new TextDecoder().decode(plain));
-}
+/* Vault crypto lives in keyring-crypto.jsx. */
 
 const PERIOD = 30;
 function nowStep(period = PERIOD) { return Math.floor(Date.now() / 1000 / period); }
@@ -276,7 +233,6 @@ const SEED_BACKUP = [
 
 Object.assign(window, {
   hashCode, realTotp, isBase32, nowStep, secondsLeft, fmtCode, useClock, PERIOD,
-  b64enc, b64dec, deriveKey, encryptVault, decryptVault,
   Tile, Icon, I, Logo, Countdown, useToast, Toast, autoTone,
   TILE_PRESETS, SEED_ACCOUNTS, SEED_BACKUP,
 });

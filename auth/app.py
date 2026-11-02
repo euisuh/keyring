@@ -14,8 +14,10 @@ def auth():
 
     stored_id, stored_pw = parts
     data = request.get_json(silent=True) or {}
-    id_match = hmac.compare_digest(str(data.get('id', '')), stored_id)
-    pw_match = hmac.compare_digest(str(data.get('password', '')), stored_pw)
+    # compare_digest only accepts ASCII str; compare UTF-8 bytes so non-ASCII
+    # input is a 401, not a TypeError/500.
+    id_match = hmac.compare_digest(str(data.get('id', '')).encode(), stored_id.encode())
+    pw_match = hmac.compare_digest(str(data.get('password', '')).encode(), stored_pw.encode())
     if id_match and pw_match:
         return jsonify({'ok': True}), 200
     return jsonify({'error': 'Invalid credentials'}), 401

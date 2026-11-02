@@ -47,23 +47,23 @@ Keyring is a two-component system: a static frontend and a single-endpoint auth 
 2. `credential-app.jsx` renders a login form for the OTP service
 3. On submit: `POST /keyring/api/auth` with `{ id, password }`
 4. nginx proxies to `keyring-auth:8080`
-5. Flask compares against `KEYRING_CREDENTIAL` env var. Returns `200` or `401`
+5. Flask compares against `KEYRING_CREDENTIAL` env var. Returns `200` or `401` (nginx returns `429` past 10 requests/min, burst 5)
 6. On `200`: credential-app writes `{ email, pw }` to `sessionStorage['kr_pending_auth']` then navigates to `/keyring/`
 7. `keyring-app.jsx` reads `kr_pending_auth` from sessionStorage on mount, removes it immediately, and calls `handleLogin(email, pw)`
 8. `handleLogin` derives an AES-GCM key from the password via PBKDF2, decrypts the vault from `localStorage['kr_vault']`, and loads accounts into React state
 
-The raw password exists only in React state during the login call — it is never stored. The derived `CryptoKey` lives in a `useRef` for the session lifetime and is cleared on sign-out.
+The raw password is in `sessionStorage` only between the two pages and is not kept after login. The derived `CryptoKey` and a non-extractable PBKDF2 base key (used to open encrypted imports with a different salt) live in `useRef`s for the session lifetime and are cleared on sign-out.
 
 ## Vault crypto
 
 | Step | Detail |
 |------|--------|
-| Key derivation | PBKDF2-SHA-256, 210 000 iterations, 16-byte random salt stored in `localStorage['kr_salt']` |
-| Encryption | AES-GCM-256, 12-byte random IV per save, IV prepended to ciphertext |
-| Storage | `btoa(iv + ciphertext)` in `localStorage['kr_vault']` |
-| On wrong password | `decryptVault` throws → login fails with "Wrong password" |
+| Key derivation | PBKDF2-HMAC-SHA-256, 600 000 iterations, 16-byte random salt stored in the envelope |
+| Encryption | AES-GCM-256, 12-byte random IV per save, AAD `keyring/v2/PBKDF2-SHA256/<iter>/<salt>` |
+| Storage | JSON `{"v":2,"kdf","iter","salt","iv","ct"}` in `localStorage['kr_vault']` |
+| On wrong password | `openVault` throws → login fails with "Wrong password" |
 
-New users get an empty vault on first login. Existing users get their decrypted vault. Legacy plaintext accounts are migrated on first encrypted login.
+New users get an empty vault on first login. Existing users get their decrypted vault. Older formats are migrated on login: pre-v2 encrypted vaults (`btoa(iv + ct)`, 210 000 iterations, salt in `kr_salt`) are re-encrypted as v2 with a new salt, and legacy plaintext `kr_accounts` are encrypted and removed. Crypto code is in `keyring-crypto.jsx`; details in `SECURITY.md`.
 
 ## TOTP engine
 
@@ -105,7 +105,8 @@ interface Vault {
 
 | File | Responsibility |
 |------|----------------|
-| `keyring-lib.jsx` | TOTP engine, AES-GCM crypto helpers, shared icons, `Tile`, `Countdown`, `Toast`, `useClock`, demo seed data |
+| `keyring-crypto.jsx` | Vault envelope (PBKDF2 + AES-GCM), legacy decrypt, import/export, vault shape validation |
+| `keyring-lib.jsx` | TOTP engine, shared icons, `Tile`, `Countdown`, `Toast`, `useClock`, demo seed data |
 | `keyring-app.jsx` | Root vault app — auth state machine, vault load/save on state change, account/backup CRUD, drag reorder, export/import |
 | `keyring-screens.jsx` | `AccountRow` (live code display + tap-to-copy), `BackupCard`, `AddModal`, `AddBackupModal` |
 | `credential-app.jsx` | Auth gate — login form, guest/demo mode, `POST /keyring/api/auth`, sessionStorage handoff |
